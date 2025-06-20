@@ -1,0 +1,200 @@
+---
+title: "Model diagnostics"
+author: "Helen Miller"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+
+```{r data-prep}
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(kableExtra)
+library(lme4)
+source(here::here("03_figures/themes.R"))
+
+data_dir <- "00_data"
+data <- fread(here::here(data_dir, "combined-data.csv"))
+data[region == "", region := NA]
+data <- data[env == "pelagic" & depth == "surface"]
+
+data[, dataset := factor(dataset, levels = c("burnett", 
+                                             "holtgrieve", 
+                                             "miller", 
+                                             "heu", 
+                                             "loken", 
+                                             "yoshikawa"))]
+data[, region := factor(region, levels = c("North",
+                                           "Central",
+                                           "South"))]
+data[, season := factor(season, levels = c("low", 
+                                           "rising", 
+                                           "high", 
+                                           "falling"))]
+```
+
+```{r functions-and-variables}
+
+ctl <- glm.control(epsilon = 1e-4)
+glmer_ctl <- glmerControl(optimizer = "bobyqa", tol = 1e-4, optCtrl=list(maxfun=100000))
+delta <- 0.0001 # delta to add for 0s in response
+
+```
+
+
+# Best models
+
+Test with and without N/P interaction
+```{r}
+
+model_dissolved <- 
+  glm(chla ~ 
+          scale(DIN) + 
+          scale(DIP) + 
+          season:(scale(DIP)) +
+          season +
+          dataset, 
+        family = Gamma(link = "log"), 
+        data = data)
+model_total <- 
+  glm(chla ~ 
+          scale(TN) + 
+          scale(TP) + 
+          season:(scale(TP)) +
+          season +
+          region , 
+        family = Gamma(link = "log"), 
+        data = data)
+
+```
+
+
+## Residuals
+```{r}
+
+ggplot() +
+  geom_point(aes(x =fitted(model_dissolved, type = "response"), y = resid(model_dissolved), 
+                 color = model_dissolved$model$season)) +
+  scale_color_discrete("Season", type = season_colors) +
+  tsl_theme
+
+ggplot() +
+  geom_point(aes(x =fitted(model_total, type = "response"), y = resid(model_total), 
+                 color = model_total$model$season)) +
+  scale_color_discrete("Season", type = season_colors) +
+  tsl_theme
+
+library(DHARMa)
+dharma_sim_dissolved <- simulateResiduals(fittedModel = model_dissolved)
+plotQQunif(dharma_sim_dissolved)
+plotResiduals(dharma_sim_dissolved)
+
+dharma_sim_total <- simulateResiduals(fittedModel = model_total)
+plotQQunif(dharma_sim_total)
+plotResiduals(dharma_sim_total)
+
+
+```
+
+## GOF
+```{r GOF}
+# hidden heterogeneity
+# Goodness of fit test specifically for gamma
+# tests to see if you have the variance you would expect for fitted values
+# Download https://drive.google.com/file/d/13CiZICgQ8uFEKbawcvuf4wLxAeH69dg8/view 
+# then install with install.packages("/path/to/file")
+Ght::gamma.scoretest.hidden.glm(model_dissolved)
+Ght::gamma.scoretest.hidden.glm(model_total)
+```
+
+## Influence and leverage points
+```{r}
+
+# Influence
+mm <- model.matrix(model_dissolved)
+faraway::halfnorm(hv <- hatvalues(model_dissolved))
+
+# Leverage
+cooks <- cooks.distance(model_dissolved)
+faraway::halfnorm(cooks, labs = names(cooks), nlab = 3)
+
+data[as.numeric(names(cooks)), cooks_distance := cooks]
+
+# 105 have high influence. 
+# 178, 191, 15 have high leverage. 
+d <- model_dissolved$model
+plot(scale(data$DIN), data$chla)
+points(d[c(15),]$`scale(DIN)`, d[c(15),]$chla, col = "red") # high hat values (influence)
+points(d[c(105),]$`scale(DIN)`, d[c(105),]$chla, col = "orange") # high cook's (leverage)
+
+plot(scale(data$DIP), data$chla)
+points(d[c(15),]$`scale(DIP)`, d[c(15),]$chla, col = "red") # high hat values (influence)
+points(d[c(105),]$`scale(DIP)`, d[c(105),]$chla, col = "orange") # high cook's (leverage)
+```
+
+
+## Season models (ANOVA)
+
+```{r season-setup}
+
+data <- fread(here::here(data_dir, "combined-data.csv"))
+data[region == "", region := NA]
+# set levels to control intercept
+
+data[, dataset := factor(dataset, levels = c("burnett", 
+                                             "holtgrieve", 
+                                             "miller", 
+                                             "heu", 
+                                             "loken", 
+                                             "yoshikawa"))]
+data[, region := factor(region, levels = c("North",
+                                           "Central",
+                                           "South"))]
+data[, season := factor(season, levels = c("low", 
+                                           "rising", 
+                                           "high", 
+                                           "falling"))]
+data <- data[env == "pelagic" & depth == "surface"]
+
+ctl <- glm.control(epsilon = 1e-4)
+delta <- 0.0001 # delta to add for 0s in response
+Y <- c("DIP", 
+       "DIN", 
+       "TP", 
+       "TN", 
+       "NO3", 
+       "DSi", 
+       "DIN.DIP", 
+       "TN.TP", 
+       "chla", 
+       "DO", 
+       "cond")
+```
+
+```{r season}
+
+test_gof <- function(y) {
+  formula <- formula(paste(y, "+delta ~ season + dataset + region"))
+  model <- glm(formula,  
+               family = Gamma(link="log"), 
+               data= data, 
+               na.action = na.omit)
+  dharma_sim <- simulateResiduals(fittedModel = model)
+  plotQQunif(dharma_sim, main = y)
+  plotResiduals(dharma_sim, main = y)
+  
+  return(Ght::gamma.scoretest.hidden.glm(model))
+}
+
+for (y in Y) {
+  print(y)
+  print(test_gof(y))
+}
+
+
+```
+
+
+
+

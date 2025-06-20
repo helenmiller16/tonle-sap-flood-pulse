@@ -1,0 +1,408 @@
+---
+title: "Exploratory data analysis"
+author: "Helen Miller"
+date: "`r Sys.Date()`"
+output: github_document
+---
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(kableExtra)
+library(lme4)
+data_dir <- "00_data"
+figures_dir <- "03_figures"
+source(here::here(figures_dir, "themes.R"))
+tsl <- fread(here::here(data_dir, "tsl-nutrients.csv"))
+# Make sure that we have high flood stage as default
+tsl[, STAGE:=factor(STAGE, levels = c("High", "Falling"))]
+tsl[, ENVIRON:=factor(ENVIRON, levels=c("Pelagic", "Edge", "Floodplain"))]
+# Change order of location
+tsl$LOCATION <- factor(tsl$LOCATION, levels = c("Northwest", "Central", "Southwest"))
+```
+
+# Data from Heu, 2023
+```{r}
+# Read in Heu, 2023 data
+
+heu <- fread(here::here(data_dir, "heu.csv"))
+
+ggplot(heu) + 
+  geom_point(aes(x = Si_uM, y = Chla, color = season)) + 
+  scale_y_log10() + 
+  tsl_theme  + 
+  data_colors_light
+
+ggplot(heu) + 
+  geom_point(aes(x = N_uM, y = Chla, color = season)) + 
+  scale_y_log10() + 
+  tsl_theme + 
+  data_colors_light
+
+ggplot(heu) + 
+  geom_point(aes(x = P_uM, y = Chla, color = season)) + 
+  scale_y_log10() + 
+  tsl_theme + 
+  data_colors_light
+
+ggplot(heu) + 
+  geom_point(aes(x = N_uM/P_uM, y = Chla, color = season)) + 
+  scale_y_log10() + 
+  tsl_theme + 
+  data_colors_light
+```
+
+```{r}
+comb <- fread(here::here(data_dir, "combined-data.csv"))
+```
+Comparing to our data... 
+
+```{r}
+# comparison of Heu vs Miller data
+# first merge them 
+
+combined <-rbind(heu[, .(STAGE = season, DATE = date, CHL_mgL = Chla, N = N_uM, P = P_uM, Si = Si_uM, NP = N_uM/P_uM, dataset = "heu")], 
+      # TODO: need to convert nutrients to mg/L
+      tsl[, .(STAGE, DATE, CHL_mgL, N = DIN, P = PHOSPHATE_uM, NP = N.P, Si = SILICA_uM, dataset = "miller")])
+
+comb_long <- melt(combined, id.vars = c("STAGE", "DATE", "dataset"))
+ggplot(comb_long) + 
+  geom_boxplot(aes(x = variable, y = value, fill = dataset)) +
+  scale_y_log10() +
+  tsl_theme + 
+  scale_fill_discrete(type = light_colors) +
+  theme(panel.grid.major.x = element_blank() ,
+        panel.grid.minor.x = element_line(color = "gray", 
+                                          linewidth = 1, 
+                                          linetype = 1)) +
+  scale_x_discrete(expand = c(0.12, 0.12)) +
+  geom_vline(xintercept = 1:5 - 0.5, color = "gray") +
+  labs(x = "", y = expression(paste(mu, "M/L")))
+
+ggplot(combined) + 
+  geom_boxplot(aes(x = STAGE, y = CHL_mgL, fill = dataset)) +
+  #scale_y_log10() +
+  tsl_theme + 
+  scale_fill_discrete(type = light_colors) 
+
+ggplot(combined) + 
+  geom_boxplot(aes(x = STAGE, y = P, fill = dataset)) +
+  #scale_y_log10() +
+  tsl_theme + 
+  scale_fill_discrete(type = light_colors) 
+ggplot(combined) + 
+  geom_boxplot(aes(x = STAGE, y = N, fill = dataset)) +
+  #scale_y_log10() +
+  tsl_theme + 
+  scale_fill_discrete(type = light_colors)
+ggplot(combined) + 
+  geom_boxplot(aes(x = STAGE, y = Si, fill = dataset)) +
+  #scale_y_log10() +
+  tsl_theme + 
+  scale_fill_discrete(type = light_colors)
+
+ggplot(combined) + 
+  geom_boxplot(aes(x = STAGE, y = NP, fill = dataset)) +
+  #scale_y_log10() +
+  tsl_theme + 
+  scale_fill_discrete(type = light_colors)
+```
+
+# PCA
+
+```{r pca}
+data <- na.omit(tsl[, .(NITRATE_uM, NITRITE_uM, AMMONIUM_uM, SILICA_uM, PHOSPHATE_uM, CHL_mgL, LOCATION, STAGE, ENVIRON, CLASS_Z)])
+pca_nutrients <- prcomp( ~ NITRATE_uM + NITRITE_uM + AMMONIUM_uM + SILICA_uM + PHOSPHATE_uM, 
+        data = data, 
+        scale. = TRUE)
+plot_pca <- function(prc, 
+                     x = "PC1", 
+                     y = "PC2", 
+                     color = data$CHL_mgL, 
+                     size = data$CHL_mgL) {
+  lims <- 
+  max(c(
+    abs(min(c(pca_nutrients$x[, x]/7, pca_nutrients$rotation[, x]), 
+        c(pca_nutrients$x[, y]/7, pca_nutrients$rotation[, y]), 
+        c(pca_nutrients$x[, x]/7, pca_nutrients$rotation[, x]), 
+        c(pca_nutrients$x[, y]/7, pca_nutrients$rotation[, y]))), 
+    max(c(pca_nutrients$x[, x]/7, pca_nutrients$rotation[, x]), 
+        c(pca_nutrients$x[, y]/7, pca_nutrients$rotation[, y]), 
+        c(pca_nutrients$x[, x]/7, pca_nutrients$rotation[, x]), 
+        c(pca_nutrients$x[, y]/7, pca_nutrients$rotation[, y]))
+  ))
+
+ggplot(pca_nutrients$x) +
+  geom_point(aes(x = .data[[x]]/7, y = .data[[y]]/7,
+                 col = color, 
+                 size = size
+                 ) ) + 
+  geom_segment(aes(x = 0, y = 0, 
+                   xend = .data[[x]], 
+                   yend = .data[[y]]), data= pca_nutrients$rotation, 
+               arrow = arrow(length=unit(0.2, 'cm')), 
+               color = "red", 
+               lwd = .2) +
+  geom_text(aes(x = .data[[x]], y = .data[[y]], 
+                label = rownames(pca_nutrients$rotation)), 
+            data= pca_nutrients$rotation, 
+            color = "red", 
+            cex = 2.5, 
+            vjust = 1.5) +
+  coord_fixed()+
+  lims(x = c(-lims, lims),
+       y = c(-lims, lims)) +
+  labs(x = "PC1", y = "PC2", 
+       color = "", size = "") +
+  tsl_theme 
+}
+
+
+plot_pca(pca_nutrients)
+plot_pca(pca_nutrients, color = data$LOCATION, size = 1) +data_colors_light + guides(size = "none")
+plot_pca(pca_nutrients, color = data$STAGE, size = 1) + guides(size = "none")+
+  data_colors_light
+plot_pca(pca_nutrients, color = data$CLASS_Z, size = 1) + guides(size = "none")+
+  data_colors_light
+plot_pca(pca_nutrients, color = data$ENVIRON, size = 1) + guides(size = "none")+
+  data_colors_light
+
+```
+
+# Nutrient Plots
+
+## Nitrate
+```{r plot-nutrients-nitrate}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = NITRATE_uM, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+ggplot(tsl[NITRATE_uM < 10]) + 
+  geom_point(aes(x= UNDERWATER_d, y = NITRATE_uM, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## Nitrite
+
+```{r plot-nutrients-nitrite}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = NITRITE_uM, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## Phosphate
+
+```{r plot-nutrients-phosphate}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = PHOSPHATE_uM, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## Ammonium
+```{r plot-nutrients-ammonium}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = AMMONIUM_uM, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## Silica
+```{r plot-nutrients-silica}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = SILICA_uM, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## DIN
+```{r plot-nutrients-din}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = DIN, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## N/P
+```{r plot-nutrients-np}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = N.P, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## N/Si
+```{r plot-nutrients-ns}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = N.S, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## P/Si
+```{r plot-nutrients-ps}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = P.S, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+# Chlorophyll-a vs nutrients Plots
+
+```{r plot-chlorophyll}
+ggplot(tsl) + 
+  geom_point(aes(x= UNDERWATER_d, y = CHL_mgL, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+## DIN
+```{r plot-chlorophyll-din}
+ggplot(tsl) + 
+  geom_point(aes(x= DIN, y = CHL_mgL, col = LOCATION, shape = LOCATION))+
+  facet_wrap(~STAGE)
+```
+
+## Phosphate
+```{r plot-chlrophyll-phosphate}
+ggplot(tsl) + 
+  geom_point(aes(x= PHOSPHATE_uM, y = CHL_mgL, col = LOCATION, shape = LOCATION))+
+  facet_wrap(~STAGE)
+```
+
+## Silica
+```{r plot-chlorophyll-silica}
+ggplot(tsl) + 
+  geom_point(aes(x= SILICA_uM, y = CHL_mgL, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+```
+
+## N/P
+```{r plot-chlorophyll-np}
+ggplot(tsl) + 
+  geom_point(aes(x= N.P, y = CHL_mgL, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+```
+
+## Nutrients faceted by location
+```{r plot-chl-location}
+ggplot(tsl) + 
+  geom_point(aes(x= DIN, y = CHL_mgL, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+ggplot(tsl) + 
+  geom_point(aes(x= PHOSPHATE_uM, y = CHL_mgL, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+ggplot(tsl) + 
+  geom_point(aes(x= SILICA_uM, y = CHL_mgL, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+```
+
+
+# 18O-O2 vs nutrients Plots
+There is some missing data for 18O-O2 and O2_Ar
+
+```{r plot-18o-o2}
+
+ggplot(tsl) + 
+  geom_point(aes(x= DIN, y = D18O_O2, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x= PHOSPHATE_uM, y = D18O_O2, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x= SILICA_uM, y = D18O_O2, col = LOCATION, shape = LOCATION))+
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x= N.P, y = D18O_O2, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+
+```
+
+## Broken down by location/season
+### Different nitrogen species
+```{r plot-N-}
+ggplot(tsl) + 
+  geom_point(aes(x= NITRATE_uM, y = D18O_O2, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+ggplot(tsl) + 
+  geom_point(aes(x= NITRITE_uM, y = D18O_O2, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+ggplot(tsl) + 
+  geom_point(aes(x= AMMONIUM_uM, y = D18O_O2, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+ggplot(tsl) + 
+  geom_point(aes(x= DIN, y = D18O_O2, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+### Phosphate and silica
+```{r}
+
+ggplot(tsl) + 
+  geom_point(aes(x= PHOSPHATE_uM, y = D18O_O2, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+ggplot(tsl) + 
+  geom_point(aes(x= SILICA_uM, y = D18O_O2, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+```
+
+
+# O2_Ar vs nutrients Plots
+
+```{r}
+
+ggplot(tsl) + 
+  geom_point(aes(x= DIN, y = O2_Ar, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x= PHOSPHATE_uM, y = O2_Ar, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x= SILICA_uM, y = O2_Ar, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x= P.S, y = O2_Ar, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+```
+
+## Broken down by location/season
+### Different nitrogen species
+```{r}
+ggplot(tsl) + 
+  geom_point(aes(x= NITRATE_uM, y = O2_Ar, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+ggplot(tsl) + 
+  geom_point(aes(x= NITRITE_uM, y = O2_Ar, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+ggplot(tsl) + 
+  geom_point(aes(x= AMMONIUM_uM, y = O2_Ar, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+ggplot(tsl) + 
+  geom_point(aes(x= DIN, y = O2_Ar, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+```
+
+
+### Phosphate and silica
+```{r}
+
+ggplot(tsl) + 
+  geom_point(aes(x= PHOSPHATE_uM, y = O2_Ar, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+ggplot(tsl) + 
+  geom_point(aes(x= SILICA_uM, y = O2_Ar, col = CLASS_Z)) + 
+  facet_grid(rows = vars(STAGE), cols = vars(LOCATION))
+
+```
+
+# O2/Ar, 18O-O2, and Chl
+```{r}
+ggplot(tsl) + 
+  geom_point(aes(x = CHL_mgL, y = O2_Ar, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x = CHL_mgL, y = D18O_O2, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+ggplot(tsl) + 
+  geom_point(aes(x = O2_Ar, y = D18O_O2, col = LOCATION, shape = LOCATION)) +
+  facet_wrap(~STAGE)
+```

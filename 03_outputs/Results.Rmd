@@ -1,0 +1,392 @@
+---
+title: "Results"
+output:
+  bookdown::word_document2: default
+---
+
+```{r echo = FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(data.table)
+library(ggplot2)
+library(patchwork)
+source(here::here("03_figures/themes.R"))
+data <- fread(here::here("00_data/combined-data.csv"))
+data$season <- factor(data$season, levels = c("low", "rising", "high", "falling"))
+data_filtered <- data[env == "pelagic" & depth == "surface"]
+data_long <- melt(data[env == "pelagic" & depth == "surface"], 
+                  id.vars = c("dataset", "region", "season"),
+                  measure.vars = c("DIP", "DIN", "TP", "TN", "NO3", "DSi", "chla", "DO", "cond", "DIN.DIP", "TN.TP"))
+
+get <- function(variable, 
+                fun, 
+                s = unique(data$season),
+                d = unique(data$dataset)) {
+  fun(data[env == "pelagic" & depth == "surface" & dataset %in% d & season %in% s][[variable]], na.rm = TRUE) |> round(2)
+}
+
+# modeling results
+coef <- fread(here::here("03_outputs/dataset_season_estimates.csv"))
+aov <- fread(here::here("03_outputs/predictor_anova.csv"))
+aov[, p_adj := p.adjust(p_value, "bonferroni")]
+anova <- fread(here::here("03_outputs/seasonal_change_estimates.csv"))
+
+.cap <- function(x) {
+    s <- strsplit(x, " ")[[1]]
+    paste(toupper(substring(s, 1, 1)), substring(s, 2),
+          sep = "", collapse = " ")
+}
+.where <- function(x, f) {
+  
+  if (f == "max") {
+    w <- which.max
+  } else if (f == "min") {
+    w <- which.min
+  } else {
+    stop("choose f = 'max' or 'min'.")
+  }
+  paste(
+    .cap(data[w(data[[x]]), dataset]), 
+    "dataset,", 
+    data[w(data[[x]]), season], 
+    "water,", 
+    data[w(data[[x]]), region], 
+    "region", 
+    sep = " "
+  )
+}
+# write out p-value
+.p <- function(p) {
+  p_ <- "_p_"
+  if (p > 0.5) {
+    p_str <- " > .5"
+  } else if (p > 0.01) {
+    p_str <- paste0(" = ", sub("^0+", "", round(p, 2)))
+  } else if (p > 0.001) {
+    p_str <- paste0(" = ", sub("^0+", "", round(p, 3)))
+  } else {
+    p_str <- " < .001"
+  }
+  paste0(p_, p_str)
+}
+
+```
+
+All constituents varied significantly between seasons, lake regions, and between datasets. However, some general trends are apparent. P concentrations tend to be low (mean [sd] total P ($\mu$M) = `r round(mean(data$TP, na.rm = TRUE), 2)` [`r round(sd(data$TP, na.rm = TRUE), 2)`]; dissolved P = `r round(mean(data$DIP, na.rm = TRUE), 2)` [`r round(sd(data$DIP, na.rm = TRUE), 2)`]), while N concentrations are generally higher (mean [sd] total N ($\mu$M) =  `r round(mean(data$TN, na.rm = TRUE), 2)` [`r round(sd(data$TN, na.rm = TRUE), 2)`]; dissolved N = `r round(mean(data$DIN, na.rm = TRUE), 2)` [`r round(sd(data$DIN, na.rm = TRUE), 2)`]), DSi is high across all seasons (mean [sd] DSi ($\mu$M) = `r round(mean(data$DSi, na.rm = TRUE), 2)` [`r round(sd(data$DSi, na.rm = TRUE), 2)`]), and there is large variation in chl-a across seasons. Table 1 provides a summary of data across seasons and lake regions. Many constituents showed a strong right-skew, resulting in a standard deviation larger than the median, as is the case for TP, DIP, DIN, and chl-a.
+
+
+```{r data-summary, fig.width = 12, fig.height = 9, fig.cap = "Data included in analysis, which only includes points from pelagic environment in Tonle Sap Lake (TSL) and from close to the surface. Note that many of the very high TN and TP values come from the South region near floating villages. Variation due to region and data source are corrected for in analysis, so fitted means will vary from the mean of the data."}
+
+knitr::include_graphics(here::here("03_outputs/data_summary_region.png"))
+```
+
+## Seasonal variation
+
+After controlling for the effects of dataset and region, there was still a significant seasonal effect for all nutrients (*p* \< 0.001). Predicted mean concentrations and changes from season to season for nutrients and chlorophyll-a are shown in Figure \@ref(fig:hysteresis). Concentrations of all nutrients decreased significantly from rising to high water (Figure \@ref(fig:hysteresis) a, b, d, e). Chl-a also decreased significantly from rising to high water (Figure \@ref(fig:hysteresis) i). Concentrations of TN, DIN, DSi, DO, and Chl-a were all lowest at high water compared to any other seasons. This contrasts with total and dissolved P, which had the lowest concentrations during falling water, although these concentrations did not differ significantly from high water (Figure \@ref(fig:hysteresis) a and d).
+
+Total and dissolved P showed a strong hysteresis pattern, with higher values during rising than falling water (Figure \@ref(fig:hysteresis) a and d). There was no significant change in total or dissolved P concentration from low to rising water or from high to falling water. P increased significantly in concentration from falling to low water, and stayed high from low to rising water with no significant change. Then, it decreased significantly from rising to high water, with concentrations staying low into falling water, with no significant change between high and falling water.
+
+Dissolved and total N followed a different pattern (Figure \@ref(fig:hysteresis) b and e). While N concentrations also decreased from rising to high water, the mean concentration increased significantly from high to falling water. Unlike P, the fitted pattern for the dissolved fraction differed than that for total N. TN concentrations were very similar between rising and falling water while DIN concentrations were higher during rising water than during falling water. TN concentrations reached their highest during low water although this fitted value was not significantly different from the values for rising and falling water, while DIN concentrations decreased from rising to high water, then increased significantly from low to rising water, reaching their highest at rising water.
+
+The N/P molar ratio also varied throughout the year, while the predicted mean stayed within or close to the co-limitation zone between 20 and 50 (Figure \@ref(fig:hysteresis) c and f). DIN/DIP was generally higher than TN/TP with the highest DIN/DIP ratio during falling water and the lowest during low water. The highest fitted mean TN/TP ratio also occurred during falling water while the lowest was during low water.
+
+```{r hysteresis, fig.cap = "Predicted mean concentrations from gamma regression model at each season for nutrients, DO, and chl-a. Water level increases on the x-axis from left to right, with low water on the left, high water on the right, and rising and falling water in the middle. Differences between rising and falling water in the middle indicate hysteresis, as in DIP (a), TP (d), TN/TP (f), and DSi (g). Thick lines represent a significant change from the previous season (p < 0.05). Error bars indicate a 95% confidence interval on predictions. The first row (a, b, c) show dissolved concentrations for P, N, and the N/P molar ratio, respectively. c is shaded for 20 < N/P < 50, the range often considered to be co-limiting between N and P. The second row (d, e, f) show total concentrations for P, N, and the N/P molar ratio, respectively, with f shaded for 20 < N/P < 50. g) Dissolved silica. h) Dissolved oxygen (DO), with the mean DO saturation point indicated, based on mean water temperature and air pressure. I) chl-a."}
+
+knitr::include_graphics(here::here("03_outputs/hysteresis.png"))
+```
+
+## Spatial variation
+
+Models including a region effect fitted the data significantly better than those excluding the region effect, indicating that all constituents significantly vary by region. Model comparison statistics are reported in [SUPPORTING]. However, while including the region effect improved the model for all constituents, the differences between seasons were not significant for dissolved fractions of N or P. There were some differences between regions for total concentrations: TP concentrations were significantly higher in the South than either North or Central; TN was significantly higher in the North than South or Central, and TN/TP was significantly lower in the South than North or Central. DSi estimates were lower in the South than North or Central. DO increased from North to South, while chl-a decreased from north to south. Region averages and confidence intervals are shown in [SUPPORTING FIGURE]. 
+
+To determine whether the spatial distribution of nutrients changed by season, we fit the same model, including monitoring data from the Mekong River Commission (MRC) to represent inputs from the northern tributary of the Sangker River (Backprea station), in-lake concentations (Kompong Luong station), Tonle Sap River inputs (Prek Kdam station), and the Mekong River upstream of Tonle Sap River (Kompong Chhnang station). The location of these stations is shown in the map in supporting info [or maybe add them to the main map?].
+
+We tested whether including an interaction term between season and region improved the model, using an anova test. There was only a significant improvement in DIN, TP, and conductivity [figure x].
+
+```{r region-interaction, fig.cap="Concentrations by season. The size of the circle indicates relative mean concentration for that location and season. The Mekong fills the lake from the south via Tonle Sap River (TSR) during rising water, and drains the lake during falling water, while tributary inputs from the north are relatively consistent year-round."}
+knitr::include_graphics(here::here("03_outputs/season_region_interaction.png"))
+```
+
+A shift in the spatial distribution of N and P occurs from low to rising water, when Mekong inputs are at their highest, filling the lake from the south. While we did not have sufficient data to estimate a mean in total P or N in the south during rising water, the pattern in the lake appears to be similar between total and dissolved concentrations. During rising water, P concentrations decrease overall, with the lowest concentrations in the south. In-lake N concentrations increase overall during rising water, with the biggest increase in the north. 
+
+The seasonal pattern in N concentrations was much different in the north than the south. The spike in concentration during rising and falling water was much more pronounced in the North than the central or South regions, exceeding concentrations in the Mekong and Tonle Sap Rivers, while cocentrations in the south and central regions were closer to Mekong concentrations. In contrast, total P concentrations were similar between central and north regions, with the biggest differences in the south. In the South, TP concentrations were much higher in low and high water seasons than falling water. 
+
+
+
+## Limitation and Productivity
+
+### Important predictors of chl-a concentrations
+
+```{r vimp}
+imp_t <- fread(here::here("03_outputs/chla_models/variable_importance_total.csv"))
+imp_d <- fread(here::here("03_outputs/chla_models/variable_importance_dissolved.csv"))
+```
+
+The variable importance scores for chl-a predictors are shown in Figure \@ref(fig:variable-importance), separately for models with total and dissolved nutrients. Season received the highest variable importance score when predicting Chl-a using both total and dissolved nutrients. P, N, region, and the interaction between P and season received importance scores \>0.9 only for the total fraction. Only season and dataset received importance scores \>0.9 for the dissolved fraction model. 
+
+Out of all combinations of variables included for total nutrient concentrations, the top four models were equally good fits based on AICc (delta-AICc \< 2). The best fit model (lowest AICc) included TP, season, region, TN, and TP\*season. This model also included the fewest covariates out of the top four models. There were four top models which fit the data equally well for dissolved nutrient concentrations (delta-AICc \< 2). Of these, the model with the fewest variables included covariates for DIP, DIN, DIN/DIP, dataset, and DIP\*season. 
+
+```{r variable-importance, fig.cap = "Variable importance and model selection. a and b show variable importance scores for all variables considered, including only total or dissolved nutrients, respectively. Variables with importance scores > 0.9 are highlighted. c and d show the 10 models with the lowest AICc scores for total and dissolved nutrient models, respectively. The top panel shows delta-AICc for each model, with the included variables indicated in the lower panel. A delta-AICc of less than 2 (highlighted) indicates similar goodness-of-fit, while a delta AICc of greater than 2 indicates that the model with the lower AICc is a better fit. We chose the model with the fewest variables out of the models with a delta-AICc of less than 2 for interpretation of effect sizes."}
+
+knitr::include_graphics(here::here("03_outputs/chl_model_selection.png"))
+```
+
+### Fitted effects
+
+```{r get-pred-numbers}
+fit_t <- fread(here::here("03_outputs/chla_models/model_fit_total.csv"))
+setnames(fit_t, c("2.5 %", "97.5 %"), c("ci_2.5", "ci_97.5"))
+fit_d <- fread(here::here("03_outputs/chla_models/model_fit_dissolved.csv"))
+setnames(fit_d, c("2.5 %", "97.5 %"), c("ci_2.5", "ci_97.5"))
+```
+
+To interpret effects of individual components on chl-a concentrations, we chose one model to fit and interpret parameters. This model was chosen by using the model with the fewest number of variables from variable combinations which resulted in a delta-AICc of less than 2. The fitted values for these models are shown in [FIGURE], along with 95% confidence intervals. Both models included a term for season and an interaction term between season and P, so predictions are separated by season.
+
+These models fit the data reasonably well, with `r round(fit_d[covariate == "R2_dev", coef], 2)` and `r round(fit_t[covariate == "R2_dev", coef], 2)` percent deviance explained for the dissolved and total concentration models, respectively (percent variance explained = `r round(fit_d[covariate == "R2_var", coef], 2)` for dissolved and `r round(fit_t[covariate == "R2_var", coef], 2)` for total). However, the effects of nutrient concentrations were generally very small or had confidence intervals which covered zero, with the largest and most significant effects coming from differences between seasons, regions, and data source. Exceptions were for TP during rising water, and DIP during low water. During rising water, chl-a concentrations increased on average by a factor of `r round(exp(fit_t[covariate == "TP", coef] + fit_t[covariate == "TP:seasonrising", coef]), 2)` for each unit increase in TP (95% CI: [`r round(exp(fit_t[covariate == "TP", coef] + fit_t[covariate == "TP:seasonrising", ci_2.5]), 2)`, `r round(exp(fit_t[covariate == "TP", coef] + fit_t[covariate == "TP:seasonrising", ci_97.5]), 2)`]). During low water, chl-a concentrations decreased on average by a factor of `r round(exp(fit_d[covariate == "DIP", coef]), 2)` for each unit increase in DIP (95% CI: [`r round(exp(fit_d[covariate == "DIP", ci_2.5]), 2)`, `r round(exp(fit_d[covariate == "DIP", ci_97.5]), 2)`]).
+
+Region was included as a top predictor in the total concentration model, with chl-a concentrations in the Central region being `r round(exp(fit_t[covariate == "regionCentral", coef]), 2)` times those in the North (95% CI = [`r round(exp(fit_t[covariate == "regionCentral", ci_2.5]), 2)`, `r round(exp(fit_t[covariate == "regionCentral", ci_97.5]), 2)`]), and concentrations in the South region being `r round(exp(fit_t[covariate == "regionSouth", coef]), 2)` times those in the North (95% CI = [`r round(exp(fit_t[covariate == "regionSouth", ci_2.5]), 2)`, `r round(exp(fit_t[covariate == "regionSouth", ci_97.5]), 2)`]). Dataset was included in the model for dissolved concentrations. Only the Burnett, Miller, and Yoshikawa datasets included dissolved N and P so only these three datasets are included in the dissolved analysis. Differences between datasets may be an indicator of inter-annual variability based on sampling dates for each dataset. 
+
+```{r preds-cap}
+.f <- function(x) {
+  # Format number
+  r <- ifelse(abs(x) < 0.005, 3, 2)
+  if(x > 0) {
+    paste0(" + ", round(x, r))
+  } else {
+    paste0(" - ", round(abs(x), r))
+  }
+}
+preds.cap <- paste0("Model predictions with 95% prediction confidence intervals, from models using only predictors with variable importance scores > 0.9. a) Predictions for the model including total N and P concentrations. Solid line indicates predictions for north region, while the dotted line corresponds to the central region and dashed lined to the south region. Fitted equation: Mean(Chla) = exp(", 
+round(fit_t[covariate == '(Intercept)', coef], 2), 
+.f(fit_t[covariate == 'TP', coef]), "×TP", 
+.f(fit_t[covariate == 'TP:seasonrising', coef]), "×TP×rising", 
+.f(fit_t[covariate == "TP:seasonhigh", coef]), "×TP×high", 
+.f(fit_t[covariate == "TP:seasonfalling", coef]), "×TP×falling", 
+.f(fit_t[covariate == "TN", coef]), "×TN", 
+.f(fit_t[covariate == "seasonrising", coef]), "×rising",  
+.f(fit_t[covariate == "seasonhigh", coef]), "×high", 
+.f(fit_t[covariate == "seasonfalling", coef]), "×falling", 
+.f(fit_t[covariate == "regionCentral", coef]), "×Central", 
+.f(fit_t[covariate == "regionSouth", coef]), "×South). b) Predictions for the model including dissolved N and P concentrations. In this figure, the solid line corresponds to predictions for the Burnett dataset, dotted line corresponds to the Miller dataset and dashed line to the Yoshikawa dataset. Fitted equation: Mean(Chla) = exp(", 
+round(fit_d[covariate =="(Intercept)", coef], 2), 
+.f(fit_d[covariate== "DIP", coef]), "×DIP", 
+.f(fit_d[covariate == "seasonrising:DIP", coef]), "×DIP×rising", 
+.f(fit_d[covariate == "seasonhigh:DIP", coef]), "×DIP×high", 
+.f(fit_d[covariate == "seasonfalling:DIP", coef]), "×DIP×falling", 
+.f(fit_d[covariate == "DIN", coef]), "×DIN", 
+.f(fit_d[covariate == "seasonrising", coef]), "×rising", 
+.f(fit_d[covariate == "seasonhigh", coef]), "×high", 
+.f(fit_d[covariate == "seasonfalling", coef]), "×falling", 
+.f(fit_d[covariate == "datasetmiller", coef]), "×Miller", 
+.f(fit_d[covariate == "datasetyoshikawa", coef]), "×Yoshikawa).")
+```
+
+```{r preds, fig.cap = preds.cap}
+
+knitr::include_graphics(here::here("03_outputs/chl_predictions.png"))
+```
+
+# Supporting
+
+## Variable Importance
+
+We use an information theory-based approach to determine the relative usefulness or importance for potential covariates at predicting chlorophyll-a concentrations. This approach derives a variable importance measure, denoted VI_k for parameter k, and takes a value between 0 and 1 with variables which better model the data being closer to 1.
+
+Our approach uses the Akaike information Criterion (AIC) which is a measure of the relative distance a model is from the unknown true model (Akaike, 1973). Thus, between two models, that with a lower AIC does a better job of estimating the true process. AIC is given by
+
+$$
+AIC = 2K-2\ln(\mathcal{L})
+$$ where $K$ is the number of parameters, and $\mathcal(L)$ is the maximized likelihood. For small sample sizes, AIC is likely to select the model with the most parameters, resulting in overfitting. To prevent this, we use the AICc, which contains a penalty term for the number of parameters(Sugiura, 1978). AICc asymptotically approaches AIC for large sample size, and is defined
+
+$$
+AICc = 2K-2\ln(\mathcal(L)) + \frac{2K^2 + 2K}{n - K - 1}.
+$$
+
+where $n$ is the number of observations. When evaluating multiple candidate models, an AIC weight can be calculated for each model. The weight for model $i$ is given as $w_i$ and can be interpreted as the probability that model i is the best fitting model out of the set of $R$ candidate models (Burnham & Anderson, 2004). $w_i$ is calculated
+
+$$
+w_i = \frac{e^{-1/2\Delta_i}}{\sum_{j=1}^R e^{-1/2\Delta_j}}
+$$
+
+where $\Delta_i$ is the difference between the minimum AICc in the set of candidate models and the AICc of model $i$,
+
+$$
+\Delta_i = AICc_i - \min(AICc).
+$$
+
+One measure of the relative importance of each variable is the sum of all the AICc weights of the candidate models that variable appears in. This is represented by the equation
+
+$$
+VI_i = \sum_{j=1}^R u_{k,i}w_i
+$$
+
+where $u_{k,i}$ is 1 if $k$ is in model $i$ and 0 otherwise.
+
+## Data summary
+
+All data is summarized in Figure \@ref(tab:data-tbl) and Table \@ref(fig:data-summary). P concentrations were low overall, with several observations below detection limits and 6 observations each for DIP and TP below 0.05 uM. DIP ranged from below detection limits to `r get("DIP", max)` uM (`r .where("DIP", "max")`) with a median of `r get("DIP", median)` and TP ranged from below detection limits to `r get("TP", max)` (`r .where("TP", "max")`) with a median of `r get("TP", median)`.
+
+N concentrations followed a much larger range of values. DIN concentrations ranged from `r get("DIN", min)` uM (`r .where("DIN", "min")`) to `r get("DIN", max)` uM (`r .where("DIN", "max")`), with a median of `r get("DIN", median)`. TN concentrations ranged from `r get("TN", min)` uM (`r .where("TN", "min")`) to `r get("TN", max)` uM (`r .where("TN", "max")`), with a median of `r get("TN", median)`.
+
+Chl-a also had a high range of values. The median chl-a value was `r get ("chla", median)` ug/L, ranging from `r get("chla", min)` ug/L (`r .where("chla", "min")`) to `r get("chla", max)` ug/L (`r .where("chla", "max")`).
+
+```{r data-tbl}
+m <- dcast(data_long, variable ~ season, fun = \(x) median(x, na.rm = TRUE))
+sd <- dcast(data_long, variable ~ season, fun = \(x) sd(x, na.rm = TRUE))
+count <- dcast(data_long, variable ~ season, fun = \(x) sum(!is.na(x)))
+
+mx <- matrix(paste0(round(as.matrix(m[, 2:5]), 2), " \U00B1 ", round(as.matrix(sd[, 2:5]), 2), " (", as.matrix(count[, 2:5]), ")"), 
+       ncol = 4)
+rownames(mx) <- m$variable
+colnames(mx) <- names(m)[2:5]
+knitr::kable(mx[c("TP", "DIP", "TN", "DIN", "DSi", "chla", "DO", "cond"), ], caption = "Median \U00B1 standard deviation (number of observations in parentheses) for all constituents for each season, including only surface samples from the pelagic environment. .")
+```
+
+```{r data-tbl-2, eval = FALSE}
+.median <- \(x) median(x, na.rm = TRUE)
+.count <- \(x) sum(!is.na(x))
+m_season <- dcast(data_long, variable ~ season, .median)
+c_season <- dcast(data_long, variable ~ season, .count)
+m_region <- dcast(data_long, variable ~ region, .median)
+c_region <- dcast(data_long, variable ~ region, .count)
+m_dataset <- dcast(data_long, variable ~ dataset, .median)
+c_dataset <- dcast(data_long, variable ~ dataset, .count)
+m_total <- data_long[, .(total = .median(value)), variable]
+c_total <- data_long[, .(total = .count(value)), variable]
+sd_total <- data_long[, .(total = sd(value, na.rm = TRUE)), variable]
+
+tbl_season <- paste0(
+  round(as.matrix(m_season[, 2:ncol(m_season)]), 2), 
+  " (", 
+  as.matrix(c_season[, 2:ncol(c_season)]),
+  ")"
+) |> matrix(nrow = nrow(m_season))
+colnames(tbl_season) <- colnames(m_season)[2:ncol(m_season)]
+rownames(tbl_season) <- rownames(m_season)
+
+tbl_region <- paste0(
+  round(as.matrix(m_region[, 2:ncol(m_region)]), 2), 
+  " (", 
+  as.matrix(c_region[, 2:ncol(c_region)]),
+  ")"
+) |> matrix(nrow = nrow(m_region))
+colnames(tbl_region) <- colnames(m_region)[2:ncol(m_region)]
+rownames(tbl_region) <- rownames(m_region)
+
+tbl_dataset <- paste0(
+  round(as.matrix(m_dataset[, 2:ncol(m_dataset)]), 2), 
+  " (", 
+  as.matrix(c_dataset[, 2:ncol(c_dataset)]),
+  ")"
+) |> matrix(nrow = nrow(m_dataset))
+colnames(tbl_dataset) <- colnames(m_dataset)[2:ncol(m_dataset)]
+rownames(tbl_dataset) <- rownames(m_dataset)
+
+tbl <- cbind(tbl_season, tbl_region, total = paste0(round(m_total$total, 2), " \U00B1 ", round(sd_total$total, 2), " (", c_total$total, ")"))
+
+rownames(tbl) <- m_dataset$variable
+
+
+knitr::kable(t(tbl[c("TP", "DIP", "TN", "DIN", "DSi", "chla", "DO", "cond"), ]), 
+             caption = "Median (number of observations in parentheses) for observed concentrations of nutrients, chl-a, dissolved oxygen (DO), and conductivity by season and by region, including only surface samples from the pelagic environment. Totals show the median ± standard deviation (number of observations in parentheses).")
+```
+
+```{r}
+# boxplots of each variable by dataset
+knitr::include_graphics(here::here("03_outputs/data_summary_by_dataset.png"))
+```
+
+
+
+## Data coverage
+
+Our data is unevenly distributed between year, season, region, and data source, all of which are sources of variation (see [reference to figure in supporting info] for a breakdown of the temporal coverage of each dataset). Thus, differences between dataset and region must first be corrected for before analyzing seasonal variability. We corrected for variation due to dataset and region from seasonal effects by including them as covariates in our model.
+
+```{r data-coverage-year}
+knitr::include_graphics(here::here("03_outputs/data_collection_date.png"))
+```
+
+```{r data-coverage-season}
+knitr::include_graphics(here::here("03_outputs/data_collection_season.png"))
+```
+
+## River concentrations
+
+```{r river-concentrations, fig.cap = "Nutrient concentrations from Tonle Sap Lake (pelagic), Tonle Sap River (TSR), and the Mekong mainstem. "}
+knitr::include_graphics(here::here("03_outputs/loken_river_concentrations.png"))
+```
+
+## Analysis of variance
+
+Variable inclusion analysis of variance. 
+## Region
+
+```{r}
+anova_result <- fread(here::here("03_outputs/predictor_anova.csv"))
+aov <- anova_result[x == "region"]
+aov[, p_adj := p.adjust(p_value, method = "bonferroni")]
+knitr::kable(aov[, .(y, `F value` = sprintf("F(%s, %s) = %s", f_df_1, f_df_2, round(f_value, 2)), `P value` = sub("_p_ ", "", sapply(p_value, .p)), `adjusted p-value (bonferroni-corrected)` = sub("_p_ ", "", sapply(p_adj, .p)))])
+```
+
+```{r}
+region_preds <- fread(here::here("03_outputs/region_preds.csv"))
+get_region_pred <- function(var, r, units = "μM", ci = TRUE) {
+  est <- region_preds[y == var & region == r, ]
+  paste0(round(est$value, 2), " ", units, " (95% CI = [", round(est$lwr, 2), ",", round(est$upr, 2), "])")
+}
+```
+
+Fitted values with a 95% confidence interval for each region are shown in [Figure], averaged over all seasons. While including the region effect improved the model for all constituents, the differences between seasons were not significant for dissolved fractions of N (North: `r get_region_pred("DIN", "North")`; Central: `r get_region_pred("DIN", "Central")`; South: `r get_region_pred("DIN", "South")`) or P (North: `r get_region_pred("DIP", "North")`; Central: `r get_region_pred("DIP", "Central")`; South: `r get_region_pred("DIP", "South")`). TP concentrations were significantly higher in the South (`r get_region_pred("TP", "South")`) than either North (`r get_region_pred("TP", "North")`) or Central (`r get_region_pred("TP", "Central")`); TN was significantly lower in Central (`r get_region_pred("TN", "Central")`) and South (`r get_region_pred("TN", "South")`) than North (`r get_region_pred("TN", "North")`), and TN/TP was significantly lower in the South (`r get_region_pred("TN.TP", "South")`) than the North (`r get_region_pred("TN.TP", "North")`) or Central (`r get_region_pred("TN.TP", "Central")`). Estimates for DSi were similar in North (`r get_region_pred("DSi", "North")`) and Central (`r get_region_pred("DSi", "Central")`) and lower in the South (`r get_region_pred("DSi", "South")`). DO increased from the North to South, while chl-a decreased from north to south.
+```{r regon-estimates}
+knitr::include_graphics(here::here("03_outputs/region_estimates.png"))
+```
+
+
+```{r season-region-hysteresis}
+knitr::include_graphics(here::here("03_outputs/season_region_hysteresis.png"))
+```
+
+
+
+```{r river-results}
+t_tp_hilo <- t.test(data[env == "river_mekong" & season == "high"]$TP, data[env == "river_mekong" & season == "low"]$TP)
+
+t_tp_river_pelagic_high <- t.test(data[env == "river_mekong" & season == "high" & dataset == "loken"]$TP, data[env == "pelagic" & season == "high" & dataset == "loken"]$TP)
+
+t_tp_river_pelagic_low <- t.test(data[env == "river_mekong" & season == "low" & dataset == "loken"]$TP, data[env == "pelagic" & season == "low" & dataset == "loken"]$TP)
+
+t_tn_hilo <- t.test(data[env == "river_mekong" & season == "high"]$TN, data[env == "river_mekong" & season == "low"]$TN)
+
+t_tn_river_pelagic_high <- t.test(data[env == "river_mekong" & season == "high" & dataset == "loken"]$TN, data[env == "pelagic" & season == "high" & dataset == "loken"]$TN)
+
+t_tn_river_pelagic_low <- t.test(data[env == "river_mekong" & season == "low" & dataset == "loken"]$TN, data[env == "pelagic" & season == "low" & dataset == "loken"]$TN)
+
+```
+
+
+
+Nutrient concentrations in the Mekong mainstem followed different patterns than in the lake. Measured concentrations are shown in [SUPPORTING FIGURE X]. One dataset included data from both TSL and the Mekong mainstem (Loken, 2025), allowing a direct comparison. While the number of samples is small, there are still significant patterns which emerge. Measured concentrations from this dataset are shown in [SUPPORTING FIGURE X]. During low water, the mean TP concentration in the Mekong was `r round(t_tp_river_pelagic_low$estimate[1], 2)` $\mu$g/L, significantly lower (`r .p(t_tp_river_pelagic_low$p.value)`) than mean pelagic TP concentration from the same dataset, `r round(t_tp_river_pelagic_low$estimate[2], 2)` $\mu$g/L. During high water, there was still a significant difference in TP concentrations between the river and lake (`r .p(t_tp_river_pelagic_high$p.value)`), but with a higher concentration in the river than TSL. The increase in TP in the Mekong mainstem in high water compared to low water was also significant (`r .p(t_tp_hilo$p.value)`). There was no significant change in TN between TSL or the Mekong mainstem, or between high and low water in the Mekong mainstem. Our focus is on pelagic conditions, and we have only three samples from the Mekong mainstem in each season, but extensive monitoring and previous research can supplement this data for the Mekong.
+
+## Conductivity correlations
+
+```{r cond-table}
+cond_table <- fread(here::here("03_outputs/dilution_ci_table.csv"))
+cond_table$V1 <- NULL
+```
+
+```{r cond}
+knitr::kable(cond_table)
+```
+
+
+All nutrients were weakly but significantly negatively correlated with conductivity. Estimates for these effects are shown in [SUPPORTING INFO]. There was no significant relationship between chl-a and conductivity (95% CI = [`r round(cond_table[model == "Chl-cond", X2.5..], 3)`, `r round(cond_table[model == "Chl-cond", X97.5..], 3)`]).
+
+## Season
+```{r}
+aov <- fread(here::here("03_outputs/predictor_anova.csv"))
+aov[, p_adj := p.adjust(p_value, "bonferroni")]
+```
+There was a significant effect of dataset for DIP (`r .p(aov[y == "DIP" & x == "dataset"]$p_adj)`), TP (`r .p(aov[y == "TP" & x == "dataset"]$p_adj)`) and DIN (`r .p(aov[y == "DIN" & x == "dataset"]$p_adj)`). Dataset was not a significant effect for TN (`r .p(aov[y == "TN" & x == "dataset"]$p_adj)`). Fitted effects of datasets indicate the average difference in value as a multiplicative effect compared to the Burnett dataset. Measurements from the Burnett dataset were fit as the intercept because it included data all analyzed constituents. Fitted effect sizes showed that concentrations were highest in the Loken dataset for both TP (Loken = `r round(coef[coef == "Loken"]$TP_est, 2)` times Burnett (95% CI = [`r round(coef[coef == "Loken"]$TP_lwr, 2)`, `r round(coef[coef == "Loken"]$TP_upr, 2)`]) and TN (Loken = `r round(coef[coef == "Loken"]$TN_est, 2)` times Burnett (95% CI = [`r round(coef[coef == "Loken"]$TN_lwr, 2)`, `r round(coef[coef == "Loken"]$TN_upr, 2)`]). DIP was highest on average in the Burnett dataset ([list effects]), as was Chl-a ([list effects]). DIN was highest in the Miller dataset ([list effects]).
+
+An analysis of variance indicated that including lake region improved predictions for DIP (`r .p(aov[y == "DIP" & x == "region"]$p_adj)`), TP (`r .p(aov[y == "TP" & x == "region"]$p_adj)`), and DIN (`r .p(aov[y == "DIN" & x == "region"]$p_adj)`) but not for TN (`r .p(aov[y == "TN" & x == "region"]$p_adj)`). The fitted average for DIP was `r round(coef[coef == "Central"]$DIP_est, 2)` times higher in the Central region compared to North, although this difference was not statistically significant (95% CI = [`r round(coef[coef == "Central"]$DIP_lwr, 2)`, `r round(coef[coef == "Central"]$DIP_upr, 2)`]) and decreased by a factor of `r round(coef[coef == "South"]$DIP_est, 2)` the South compared to the North, although again not significantly (95% CI = [`r round(coef[coef == "South"]$DIP_lwr, 2)`, `r round(coef[coef == "South"]$DIP_upr, 2)`]). The fitted average for TP was `r round(coef[coef == "Central"]$TP_est, 2)` times higher in the Central region compared to North, although this was not a significant difference (95% CI = [`r round(coef[coef == "Central"]$TP_lwr, 2)`, `r round(coef[coef == "Central"]$TP_upr, 2)`]), and `r round(coef[coef == "South"]$TP_est, 2)` times higher in the South compared to the North (95% CI = [`r round(coef[coef == "South"]$TP_lwr, 2)`, `r round(coef[coef == "South"]$TP_upr, 2)`]). The fitted average for DIN was close to the same as that for the Central region (95% CI = [`r round(coef[coef == "Central"]$DIN_lwr, 2)`, `r round(coef[coef == "Central"]$DIN_upr, 2)`]) anbd the South region (95% CI = [`r round(coef[coef == "South"]$DIN_lwr, 2)`, `r round(coef[coef == "South"]$DIN_upr, 2)`]). The fitted average for TN decreased by a factor of `r round(coef[coef == "Central"]$TN_est, 2)` in the Central region compared to North (95% CI = [`r round(coef[coef == "Central"]$TN_lwr, 2)`, `r round(coef[coef == "Central"]$TN_upr, 2)`]) and decreased by a factor of `r round(coef[coef == "South"]$TN_est, 2)` the South compared to the North (95% CI = [`r round(coef[coef == "South"]$TN_lwr, 2)`, `r round(coef[coef == "South"]$TN_upr, 2)`]).
+
+The fitted average for Chl-a decreased by a factor of `r round(coef[coef == "Central"]$chla_est, 2)` in the Central region compared to North, although this was not statistically significant (95% CI = [`r round(coef[coef == "Central"]$chla_lwr, 2)`, `r round(coef[coef == "Central"]$chla_upr, 2)`]) and decreased by a factor of `r round(coef[coef == "South"]$chla_est, 2)` the South compared to the North (95% CI = [`r round(coef[coef == "South"]$chla_lwr, 2)`, `r round(coef[coef == "South"]$chla_upr, 2)`]).

@@ -1,0 +1,110 @@
+---
+title: "Exploring hypotheses"
+author: "Helen Miller"
+date: "`r Sys.Date()`"
+output: github_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+  chunk_output_type: inline
+---
+
+# Setup
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(lme4)
+data_dir <- "00_data"
+source(here::here("03_figures/themes.R"))
+```
+
+```{r}
+data <- fread(here::here(data_dir, "combined-data.csv"), 
+              stringsAsFactors = TRUE)
+data[region == "", region := NA]
+```
+
+```{r}
+ctl <- glm.control(epsilon = 1e-4)
+glmer_ctl <- glmerControl(optimizer = "bobyqa", tol = 1e-4, optCtrl=list(maxfun=100000))
+delta <- 0.0001 # delta to add for 0s in response
+
+ci_tab <- function(model) {
+  ci <- confint(model)
+  tab <- data.frame(coefficients(model),ci[,1],ci[,2])
+  colnames(tab) <- c("Coefficients","Lower 95%","Upper 95%")
+  tab <- exp(tab)
+  tab$`Pr(>|t|)` <- summary(model)$coefficients[,"Pr(>|t|)"]
+  round(tab, 4)
+}
+
+AICc <- function(model) {
+  p <- length(ncol(coefficients(model)[[1]]))
+  n <- length(fitted(model))
+  AIC(model) + ((2*p*(p+1)) /(n - p - 1))
+}
+aic_tbl <- function(models=list()) {
+  tbl <- data.frame(model=rep("", length(models)))
+  tbl$model <- unlist(lapply(models, formula))
+  tbl$AICc   <- unlist(lapply(models, AICc))
+  tbl$dAIC <- tbl$AIC - min(tbl$AIC)
+  tbl$weights <- round(exp(-0.5*tbl$dAIC)/sum(exp(-0.5*tbl$dAIC)), 3)
+  t <- tbl[order(tbl$AICc), ]
+  t$model <- as.character(t$model)
+  knitr::kable(t)
+}
+
+```
+
+# Fit all models
+## Mixed? 
+```{r}
+m <- glmer(TP+delta ~ season + dataset + (1|region) ,  family = Gamma(link="log"), data= data, na.action = na.omit, control = glmer_ctl)
+summary(m)
+```
+
+
+## Nitrogen
+
+```{r}
+no3_anova <- glm(NO3+delta ~ season + dataset + region ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+
+din_anova <- glm(DIN+delta ~ season + dataset + region ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+
+tn_anova <- glm(TN+delta ~  dataset + region + season ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+```
+
+## Phosphorus
+
+```{r}
+dip_anova <- glm(DIP+delta ~ season + dataset + region ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+
+tp_anova <- glm(TN+delta ~  dataset + region + season ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+```
+
+## Silica
+```{r}
+dsi_anova <- glm(DSi+delta ~ season + dataset + region ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+```
+
+## Ratios
+```{r}
+dinp_anova <- glm(DIN.DIP+delta ~ season + dataset + region ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+
+tnp_anova <- glm(TN.TP+delta ~ season + dataset + region ,  family = Gamma(link="log"), data= data, na.action = na.omit)
+```
+
+# output results to csv
+
+```{r}
+
+```
+
+
+
+
+
+
+

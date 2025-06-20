@@ -1,0 +1,15 @@
+.Rproj.user
+.Rhistory
+.RData
+.Rproj.*
+.*.Rnb.cached
+README.html
+scratch
+
+.ipynb_checkpoints
+__pycache__
+
+# Don't push MRC data because 
+# I don't think the data licensing 
+# allows us to share it publicly
+MRC

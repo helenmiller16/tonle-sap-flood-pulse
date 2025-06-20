@@ -1,0 +1,167 @@
+---
+title: "Data summary"
+author: "Helen Miller"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+Start by summarizing the range of data values. 
+
+```{r}
+library(data.table)
+library(ggplot2)
+library(patchwork)
+source(here::here("03_figures/themes.R"))
+data <- fread(here::here("00_data/combined-data.csv"))
+data$season <- factor(data$season, levels = c("low", "rising", "high", "falling"))
+
+sum(data$DIP < 0.05, na.rm = TRUE)
+
+data_long <- melt(data[env == "pelagic" & depth == "surface"], 
+                  id.vars = c("env", "dataset", "region", "depth", "season"),
+                  measure.vars = c("DIP", "DIN", "TP", "TN", "NO3", "DSi", "chla", "DO", "cond", "DIN.DIP", "TN.TP"))
+
+
+ggplot(data_long) + 
+  geom_boxplot(aes(x = season, y = value)) + 
+  facet_grid(rows = vars(variable), cols = vars(dataset), scales = "free_y") +
+  scale_y_continuous(n.breaks = 3) +
+  tsl_theme +
+  theme(panel.grid.major.x = element_blank(), 
+        panel.grid.minor = element_blank()) 
+  
+# Same thing but points are colored by dataset
+plot_values <- function(v, legend= FALSE, units = "μM", ylab = v, xlab = FALSE, xax = FALSE) {
+  p <- ggplot(data_long[variable == v]) + 
+    geom_boxplot(aes(x = season, y = value)) + 
+    geom_jitter(aes(x = season, y = value, color = dataset), 
+                alpha = 0.3, 
+                width = 0.1) + 
+    scale_y_continuous(sprintf("%s (%s)", ylab, units), n.breaks = 3) + 
+    xlab("Season") +
+    tsl_theme + 
+    theme(panel.grid.major.x = element_blank(),
+          legend.position = ifelse(legend, "right", "none")) +
+    scale_color_discrete("Dataset", type = dataset_colors)
+  if (!xlab) {p = p + theme(axis.title.x = element_blank())}
+  if (!xax) {p = p + theme(axis.text.x = element_blank())}
+  p
+}
+
+(plot_values("DIP")  + plot_values("DIN") + plot_values("DIN.DIP", ylab = "DIN/DIP")) /
+  (plot_values("TP") + plot_values("TN")  + plot_values("TN.TP", ylab = "TN/TP", legend = TRUE) ) /
+  (plot_values("DSi", xax = TRUE) + plot_values("DO", units = "mg/L", xlab = TRUE, xax = TRUE) + plot_values("chla", units = "μg/L", xax = TRUE))
+
+ggplot(data_long[!variable %in% c("NO3", "cond")]) + 
+  geom_boxplot(aes(x = season, y = value)) + 
+  geom_jitter(aes(x = season, y = value, colour = dataset), 
+             alpha = 0.3, 
+             width = .1) +
+  facet_wrap(~variable, scales = "free", ncol = 3) +
+  scale_y_continuous(n.breaks = 3) +
+  tsl_theme +
+  theme(panel.grid.major.x = element_blank(), 
+        panel.grid.minor = element_blank())+ 
+  data_colors_dark
+
+ data_long[env == "pelagic" & depth == "surface", 
+          sum(!is.na(value)), 
+          variable] |> t () |> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          min(value, na.rm = TRUE), 
+          variable] |> t () |> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          max(value, na.rm = TRUE), 
+          variable] |> t () |> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          mean(value, na.rm = TRUE), 
+          variable] |> t () |> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          median(value, na.rm = TRUE), 
+          variable] |> t () |> knitr::kable()
+
+
+data_long[env == "pelagic" & depth == "surface", 
+          min(value, na.rm = TRUE), 
+          c("dataset", "variable")] |> 
+  dcast(dataset ~ variable) |> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          max(value, na.rm = TRUE), 
+          c("dataset", "variable")] |> 
+  dcast(dataset ~ variable)|> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          mean(value, na.rm = TRUE), 
+          c("dataset", "variable")] |> 
+  dcast(dataset ~ variable)|> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          median(value, na.rm = TRUE), 
+          c("dataset", "variable")] |> 
+  dcast(dataset ~ variable)|> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          sum(is.na(value)), 
+          c("dataset", "variable")] |> 
+  dcast(dataset ~ variable)|> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          min(value, na.rm = TRUE), 
+          c("season", "variable")] |> 
+  dcast(season ~ variable)|> knitr::kable()
+data_long[env == "pelagic" & depth == "surface", 
+          max(value, na.rm = TRUE), 
+          c("season", "variable")] |> 
+  dcast(season ~ variable)|> knitr::kable()
+data_long[env == "pelagic" & depth == "surface", 
+          mean(value, na.rm = TRUE), 
+          c("season", "variable")] |> 
+  dcast(season ~ variable)|> knitr::kable()
+data_long[env == "pelagic" & depth == "surface", 
+          median(value, na.rm = TRUE), 
+          c("season", "variable")] |> 
+  dcast(season ~ variable)|> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          max(value, na.rm = TRUE), 
+          c("region", "variable")] |> 
+  dcast(region ~ variable)|> knitr::kable()
+
+data_long[env == "pelagic" & depth == "surface", 
+          min(value, na.rm = TRUE), 
+          c("region", "variable")] |> 
+  dcast(region ~ variable)|> knitr::kable()
+```
+
+
+# Compare to literature
+
+## Okavango (Mmualefe & Torto, 2011)
+TN and TP generally low, below detection. 
+They may increase due to flooding. Maximum recorded values: 
+
+TP 1.6 mg/L = `r 1.6 * 1000 / 30.973761` uM
+Highest TP in TSL is 25.16 uM
+
+TN 1.72 mg/L = `r 1.72 * 1000 / 14.0067` uM
+Highest TN in TSL is 251.8801 uM
+
+
+## Amazon floodplain lakes (Campos-Silva et al., 2020)
+looked at 58 floodplain lakes along Jurua River
+(major Amazon tributary) -- oxbow and incised lakes
+which isolate from river during low water
+
+TP greater during low water (similar numbers to TSL)
+2.6 +- 1.1 uM during low water
+1.7 +- 2.1 uM during high water
+
+N much higher during high water
+0.8 +- 1.2 uM during low water (lower than in TSL) (much lower than TSL)
+33.6 +- 8.4 uM during high water (similar to TSL during high)
+
