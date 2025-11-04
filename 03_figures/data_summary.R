@@ -81,7 +81,114 @@ print((plot_values("DIP")  + plot_values("DIN") + plot_values("DIN.DIP", ylab = 
 dev.off()
 
 
+
 plot_by_dataset <- function(v, legend= FALSE, units = "μM", ylab = v, xlab = FALSE, xax = FALSE) {
+  p <- ggplot(data_long[variable == v]) + 
+    geom_boxplot(aes(x = dataset, y = value), outliers = FALSE) + 
+    geom_jitter(aes(x = dataset, y = value, color = season, shape = season), 
+                alpha = 0.6, 
+                width = 0.1) + 
+    scale_y_continuous(sprintf("%s (%s)", ylab, units)) + 
+    xlab("Season") +
+    tsl_theme + 
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = ifelse(legend, "right", "none"), 
+          axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) +
+    scale_color_discrete("Season", type = season_colors) +
+    scale_shape_discrete("Season")
+  if (!xlab) {p = p + theme(axis.title.x = element_blank())}
+  if (!xax) {p = p + theme(axis.text.x = element_blank())}
+  p
+}
+png(here::here(output_dir, "data_summary_by_dataset.png"), 
+    width = 12, height = 9, units = "in", res = 120)
+print((plot_by_dataset("DIP")  + plot_by_dataset("DIN") + plot_by_dataset("DIN.DIP", ylab = "DIN/DIP")) /
+        (plot_by_dataset("TP") + plot_by_dataset("TN")  + plot_by_dataset("TN.TP", ylab = "TN/TP", legend = TRUE) ) /
+        (plot_by_dataset("DSi", xax = TRUE) + 
+           plot_by_dataset("DO", units = "mg/L", xlab = TRUE, xax = TRUE) + 
+           plot_by_dataset("chla", units = "μg/L", xax = TRUE)))
+dev.off()
+
+# Same thing but points are colored by dataset
+plot_values <- function(v, legend= FALSE, units = "μM", ylab = v, xlab = FALSE, xax = FALSE) {
+  p <- ggplot(data_long[variable == v]) + 
+    geom_boxplot(aes(x = season, y = value), outliers = FALSE) + 
+    geom_jitter(aes(x = season, y = value, color = dataset, shape = dataset), 
+                alpha = 0.6, 
+                width = 0.1) + 
+    scale_y_continuous(sprintf("%s (%s)", ylab, units)) + 
+    xlab("Season") +
+    tsl_theme + 
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = ifelse(legend, "right", "none")) +
+    scale_color_discrete("Dataset", type = dataset_colors) +
+    scale_shape_discrete("Dataset")
+  if (!xlab) {p = p + theme(axis.title.x = element_blank())}
+  if (!xax) {p = p + theme(axis.text.x = element_blank())}
+  p
+}
+png(here::here(output_dir, "data_summary_dataset.png"), 
+    width = 12, height = 9, units = "in", res = 120)
+print((plot_values("DIP")  + plot_values("DIN") + plot_values("DIN.DIP", ylab = "DIN/DIP")) /
+        (plot_values("TP") + plot_values("TN")  + plot_values("TN.TP", ylab = "TN/TP", legend = TRUE) ) /
+        (plot_values("DSi", xax = TRUE) + 
+           plot_values("DO", units = "mg/L", xlab = TRUE, xax = TRUE) + 
+           plot_values("chla", units = "μg/L", xax = TRUE)))
+dev.off()
+
+
+# Same thing but grouped by region
+
+to_pretty <- as_labeller(c(DIP = "DIP (μM)", 
+                           DIN = "DIN (μM)", 
+                           TP = "TP (μM)", 
+                           TN = "TN (μM)", 
+                           NO3 = "NO3 (μM)", 
+                           DSi = "DSi (μM)", 
+                           chla = "chl-a (μg/L)", 
+                           DO = "DO (mg/L)", 
+                           cond = "Conductivity\n(μS)", 
+                           DIN.DIP = "DIN/DIP", 
+                           TN.TP = "TN/TP"))
+
+big_facet <- ggplot(data_long[variable %in% c("DIP", "DIN", "TP", "TN", "DSi", "chla", "DO", "DIN.DIP", "TN.TP", "cond")][
+ , v := factor(variable, levels = c("DIP", "TP", "DIN", "TN", "DIN.DIP", "TN.TP", "DSi", "chla", "DO", "cond"))
+]) + 
+  geom_boxplot(aes(x = season, y = value), outliers = FALSE) + 
+  geom_jitter(aes(x = season, y = value, color = dataset, shape = dataset), 
+              alpha = 0.6, 
+              width = 0.1) + 
+  tsl_theme + 
+  # facet_grid(rows = vars(variable), cols = vars(region), scales = "free", 
+  #            labeller = \(var, x) {
+  #              if (var=='variable') {
+  #                return(list(DIP = "DIP (μM)", 
+  #                            DIN = "DIN (μM)", 
+  #                            TP = "TP (μM)", 
+  #                            TN = "TN (μM)", 
+  #                            NO3 = "NO3 (μM)", 
+  #                            DSi = "DSi (μM)", 
+  #                            chla = "chl-a (μg/L)", 
+  #                            DO = "DO (mg/L)", 
+  #                            cond = "Conductivity (μS)", 
+  #                            DIN.DIP = "DIN/DIP", 
+  #                            TN.TP = "TN/TP")[x])
+  #              } else {
+  #                return(as.character(value))
+  #              }}) +
+  facet_grid(rows = vars(v), cols = vars(region), scales = "free", 
+             labeller = labeller(v = to_pretty)) +
+  scale_color_discrete("Dataset", type = dataset_colors) +
+  scale_shape_discrete("Dataset") 
+
+png(here::here(output_dir, "season_region_facet.png"), 
+    width = 6, height = 9, units = "in", res = 300)
+print(big_facet)
+dev.off()
+
+plot_by_region <- function(v, legend= FALSE, units = "μM", ylab = v, xlab = FALSE, xax = FALSE) {
   p <- ggplot(data_long[variable == v]) + 
     geom_boxplot(aes(x = dataset, y = value), outliers = FALSE) + 
     geom_jitter(aes(x = dataset, y = value, color = season, shape = season), 

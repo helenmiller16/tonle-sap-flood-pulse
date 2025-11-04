@@ -54,29 +54,29 @@ order_d <- gsub("TN", "DIN", order_d) |>
 importance_t <- ggplot(it) + 
   geom_bar(aes(x = predictor, y = weight), 
            stat = "identity", fill = "#828DA5", 
-           color = ifelse(it$weight > 0.9, "#0248e0", "transparent"), 
+           color = "transparent", 
            linewidth = 1) +
-  geom_hline(aes(yintercept = 0.9)) + 
+  #geom_hline(aes(yintercept = 0.9)) + 
   lims(x = order_t) +
   tsl_theme +
   theme(panel.border = element_blank()) +
   labs(x = "", y = "Importance score") +
   scale_y_continuous(limits = c(0, 1.02), expand = c(0,0)) +
-  annotation_custom(grid::textGrob("0.9"), xmin =0.2, xmax = 0.2, ymin = .9, ymax = .9) +
+  #annotation_custom(grid::textGrob("0.9"), xmin =0.2, xmax = 0.2, ymin = .9, ymax = .9) +
   coord_flip(clip = 'off') 
 
 importance_d <- ggplot(id) + 
   geom_bar(aes(x = predictor, y = weight), 
            stat = "identity", fill = "#828DA5", 
-           color = ifelse(id$weight > 0.9, "#0248e0", "transparent"), 
+           color = "transparent", 
            linewidth = 1) +
-  geom_hline(aes(yintercept = 0.9)) + 
+  #geom_hline(aes(yintercept = 0.9)) + 
   lims(x = order_d) +
   tsl_theme +
   theme(panel.border = element_blank()) +
   labs(x = "", y = "Importance score") +
   scale_y_continuous(limits = c(0, 1.02), expand = c(0,0)) +
-  annotation_custom(grid::textGrob("0.9"), xmin =0.2, xmax = 0.2, ymin = .9, ymax = .9) +
+  #annotation_custom(grid::textGrob("0.9"), xmin =0.2, xmax = 0.2, ymin = .9, ymax = .9) +
   coord_flip(clip = 'off') 
 importance <- importance_t + importance_d
 
@@ -95,7 +95,8 @@ p_top_t <- ggplot(pt) +
         panel.border = element_blank()) +
   scale_y_discrete(limits = order_t) +
   labs(y = "Variables included",
-       x = "Model")
+       x = "Model") +
+  scale_x_continuous(expand = c(0.01, 0.01))
 
 ## Plot Delta AIC -----
 d <- unique(pt[, .(model, delta)])
@@ -128,7 +129,10 @@ p_top_d <- ggplot(pd) +
         panel.border = element_blank()) +
   scale_y_discrete(limits = order_d) +
   labs(y = "Variables included",
-       x = "Model")
+       x = "Model") +
+  scale_x_continuous(expand = c(0.01, 0.01))
+
+
 
 ## Plot Delta AIC -----
 d <- unique(pd[, .(model, delta)])
@@ -154,6 +158,13 @@ p_daic_d <- ggplot(d) +
 #panel.grid.minor.x = element_blank()) 
 
 ## Make final layout -----
+tag <- theme(
+  plot.tag.location = "plot", 
+  #plot.tag = element_text(hjust = -2, vjust = 1), 
+  plot.margin = rep(unit(.3, "cm"), 4))
+notag <- theme(
+  plot.tag = element_blank()
+)
 
 layout <- '
 AB
@@ -170,27 +181,42 @@ EF
 EF
 '
 
-tag <- theme(
-  plot.tag.location = "plot", 
-  #plot.tag = element_text(hjust = -2, vjust = 1), 
-  plot.margin = rep(unit(.3, "cm"), 4))
-notag <- theme(
-  plot.tag = element_blank()
-)
-
-p <- importance_t + ggtitle("Total nutrients") + tag + 
-  importance_d +ggtitle("Dissolved nutrients") + tag+ 
-  p_daic_t +ggtitle("")+ tag + (p_daic_d +ggtitle("")+ theme(axis.title.y = element_blank())+ tag) + 
-  p_top_t +notag + (p_top_d+ theme(axis.title.y = element_blank()) + notag) + 
+p <- importance_t + ggtitle("Total nutrients") + tag +
+  importance_d +ggtitle("Dissolved nutrients") + tag+
+  p_daic_t +ggtitle("")+ tag + (p_daic_d +ggtitle("")+ theme(axis.title.y = element_blank())+ tag) +
+  p_top_t +notag + (p_top_d+ theme(axis.title.y = element_blank()) + notag) +
   #plot_spacer() +
   plot_layout(design = layout) #+ plot_annotation(tag_levels = "a") &
-  # theme(plot.tag.position = "topleft", 
+  # theme(plot.tag.position = "topleft",
   #       plot.tag.location = "panel")
+
+# layout <- '
+# AB
+# AB
+# CD
+# CD
+# CD
+# CD
+# EF
+# EF
+# GH
+# GH
+# GH
+# '
+# 
+# p <- p_daic_t + ggtitle("Total nutrients") + plot_spacer() + tag +
+#   p_top_t + notag + (importance_t +theme(axis.text.y = element_blank())) +
+#   p_daic_d + ggtitle("Total nutrients") + plot_spacer() + 
+#   p_top_d + notag +(importance_d + theme(axis.text.y = element_blank())) +
+#   plot_layout(design = layout)
+# p+ plot_annotation(tag_levels = "a", tag_suffix = ".") 
 
 p <-  p + plot_annotation(tag_levels = "a", tag_suffix = ".") 
 
+p
 
-png(here::here(output_dir, "chl_model_selection.png"), width = 10, height = 9, units = "in", res = 240)
+
+png(here::here(output_dir, "chl_model_selection.png"), width = 10, height = 9, units = "in", res = 300)
 print(p)
 dev.off()
 
@@ -304,6 +330,6 @@ preds_plot_t <- ggplot(preds_total) +
 preds_plot <- preds_plot_t / preds_plot_d + plot_annotation(tag_levels = "a", tag_suffix = ".") 
 
 png(here::here(output_dir, "chl_predictions.png"), 
-    width = 12, height = 10, units = "in", res = 150)
+    width = 12, height = 10, units = "in", res = 300)
 print(preds_plot)
 dev.off()

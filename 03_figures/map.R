@@ -6,6 +6,8 @@ library(sf)
 library(basemaps)
 library(terra)
 library(ggrepel)
+library(gtable)
+library(patchwork)
 source(here::here("03_figures/themes.R"))
 
 data_dir <- "00_data"
@@ -30,6 +32,8 @@ data_sf <- st_transform(data_sf, crs(lake_level))
 
 regions <- read_sf(here::here(data_dir, "TSL-regions.kml"))
 regions <- st_transform(regions, crs(lake_level))
+regions_labels <- read_sf(here::here(data_dir, "tsl-regions-labels.gpkg"))
+regions_labels <- st_transform(regions_labels, crs(lake_level))
 
 lake_level_df <- as.data.frame(lake_level, xy = TRUE)
 lake_level_df <- lake_level_df[lake_level_df$dur1997daily > 0,]
@@ -65,6 +69,25 @@ d$dataset <- factor(d$dataset, levels = c("yoshikawa",
                                                       "holtgrieve"))
 
 # Main map with sampling locations -----
+
+# Get color legend 
+# https://stackoverflow.com/questions/13143894/how-do-i-position-two-legends-independently-in-ggplot/13327793#13327793
+l1 <- (basemap + 
+  geom_raster(data = lake_level_df[lake_level_df$dur1997daily >= 360,],
+              aes(x = x, y = y), fill = "#1d03b2") +
+  scale_fill_continuous(name = "Inundation time",
+                        high = "#013896", 
+                        low = "#b6d8ba", 
+                        breaks = c(3, 6, 9) * 30,
+                        labels = c("3 months", "6 months", "9 months"), 
+                        limits = c(1, 365)) + 
+    theme(legend.background = element_rect(fill = "white", colour = "gray30"), 
+          text = element_text(size = 10), 
+          legend.title = element_text(size = rel(1.1)))) |> 
+  ggplot_build() |> 
+  ggplot_gtable() |> 
+  gtable_filter("guide-box") 
+
 main_map <- basemap +
   geom_sf(data = rivers_clipped, aes(linewidth = Strahler, alpha = Strahler), color = "#1d03b2") +
   scale_linewidth(range = c(.5, 1), guide = "none") + 
@@ -96,7 +119,10 @@ main_map <- basemap +
                         low = "#b6d8ba", 
                     breaks = c(3, 6, 9) * 30,
                     labels = c("3 months", "6 months", "9 months"), 
-                    limits = c(1, 365)) +
+                    limits = c(1, 365), 
+                    guide = "none") +
+  geom_sf_text(data = regions_labels, 
+              aes(label = label), nudge_x = 12000, color = "gray30") + 
     annotation_scale(location = "bl",
                      pad_x = unit(2.8, "in"), 
                      bar_cols = c("gray30", "gray90"), 
@@ -110,7 +136,16 @@ main_map <- basemap +
                              line_col = "gray30", 
                              fill = c("gray90", "gray30"), 
                              text_col = "gray30"
-                           ))
+                           )) + 
+  theme(legend.position = c(.99, .99), 
+        legend.justification = c(1, 1), 
+        legend.background = element_rect(fill = "white", colour = "gray30"), 
+        text = element_text(size = 10), 
+        legend.title = element_text(size = rel(1.1))) + 
+  annotation_custom(grob = l1$grobs[[1]], 
+                    ymin = 1350000, ymax = 1431000, 
+                    xmin = 268000, xmax = 340000
+  )
 
 
 
@@ -152,7 +187,7 @@ context_map <- ggplot(countries) +
           legend.position = "none"
         ) +
    geom_sf(data = map_bbox, 
-           linewidth = 2, 
+           linewidth = 1, 
            fill = "transparent")
   
 # Map of MRC sites -----
@@ -241,9 +276,12 @@ lake_map <- ggplot() +
                         limits = c(1, 365)) 
 
 
-png(here::here(output_dir, "map_datasets.png"), width = 8, height = 6, 
-    units = "in", res = 240)
-print(main_map)
+tiff(here::here(output_dir, "map_datasets.tif"), width = 10, height = 5, 
+     units = "in", res = 600)
+print( (main_map + theme(legend.key.spacing = unit(.2, "pt")) ) + context_map +
+        plot_layout(design = 
+'AAAB
+AAA#'))
 dev.off()
 
 png(here::here(output_dir, "context_map.png"), width = 3, height = 3, 

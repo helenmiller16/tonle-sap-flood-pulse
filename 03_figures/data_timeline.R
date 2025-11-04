@@ -93,7 +93,7 @@ data[, season := factor(season, levels = c("rising", "high", "falling", "low"))]
 jul_mon <- c(2, 33, 61, 92, 122, 153, 183, 214, 245, 275, 306, 336)
 mon_names <- strftime(strptime(paste0(1:12, "-01-2020"), format = "%m-%d-%Y"), format = "%b")
 # start hydro year in May (low water)
-hydro_year_start = jul_mon[5] + 15
+hydro_year_start = jul_mon[5] # + 15
 
 # Shift everything back 5 months so year starts in May
 hydro_mon <- (jul_mon - hydro_year_start) %% 365
@@ -309,6 +309,7 @@ water_level_plot_standalone <-
              aes(x = hydro_day, y = water_level_m, 
                  #colour = as.factor(hydro_year)
                  ), 
+             size = 3,
              alpha = 0.5) +
   tsl_theme +
   scale_x_continuous(breaks = hydro_mon[c(6, 9, 12, 3)], 
